@@ -1,0 +1,21 @@
+Notes for Using SBOS2 v0.91 with PAS 16 Sound Cards
+Michael Fulbright
+
+
+The PAS 16 card does not come up in SB emulation mode. There is a DOS
+device driver which turns on this emulation called MVSOUND.SYS included
+with your sound card.
+
+When SBOS2.SYS loads with the PAS16 option it skips the check to make
+sure a sound card actually exists. To use SBOS2 you have to enable the
+SB emulation by running a DOS session that loads the driver MVSOUND.SYS.
+Thats all, once you load that driver once everything is setup.
+
+I don't recommend trying to run a program that uses SBOS2 while you
+have the driver MVSOUND.SYS loaded. Currently SBOS2 isn't too smart
+about DOS and Windows sessions, and problems can occur if you run two
+programs that use the SB at the same time.
+
+So it is probably best to load a DOS session in your Startup Folder
+which will load MVSOUND.SYS and then exit. This way the SB emulation
+gets enabled everytime you boot your machine.

@@ -1,0 +1,26 @@
+MIXERTOOL is a PM program to access the internal mixer on the SB Pro. It
+WILL NOT work with a SB. It requires that the SBOS2.SYS device driver is
+installed.
+
+To run mixertool just type 'mixertool' at a OS/2 prompt, or double click
+on the Program Object for mixertool.exe.
+
+The program is pretty much self explanatory. The sliders control the volume
+levels for the various inputs and outputs of the SB Pro. The radio buttons
+control the recording source and whether or not certain filters are
+enabled. Play around and you'll figure out how it all works.
+
+Note that the CD IN is a stereo port, but only has a mono mixer. This will
+be changed in future releases.
+
+The 'REFRESH' button should be used if the mixer state is changed by another
+program and you want to update the Mixertool display.
+
+Building the program is not difficult. You will need GNU MAKE and the
+EMX port of GNU GCC. Then run MAKE and everythign should compile.
+You'll get a few warning errors which you can ignore. If I get a chance
+I'll try to clean up the messages, but they are harmless.
+
+Enjoy
+michael fulbright
+msf@as.arizona.edu

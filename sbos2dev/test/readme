@@ -1,0 +1,6 @@
+These are a few example programs showing how to use the SBDSP$ and SBMIX$
+driver. The makefile assumes you are using GNU MAKE.
+
+To compile all the example just run make. Not that setmixer.exe WILL ONLY
+work with SB Pros.
+

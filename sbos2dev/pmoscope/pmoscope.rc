@@ -1,0 +1,9 @@
+#include <os2.h>
+#include "pmoscope.h"
+
+POINTER ID_MAIN "pmoscope.ico"
+
+STRINGTABLE
+BEGIN
+	IDS_TITLE, "PM Oscilloscope"
+END

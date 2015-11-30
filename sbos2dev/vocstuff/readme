@@ -1,0 +1,20 @@
+The two files player.c and recorder.c are sample programs to create
+and play .VOC files. They are not very polished programs, but should
+work well enough.
+
+Both programs give help if you just type their name. Both also
+can play/record raw sound files if you use the -b switch.
+
+If you have a SBPro then use Mixertool or setmixer to set the
+recording source and the recording/playback levels.
+
+Both can be compiled with EMX GCC 0.8e and the supplied GNU MAKE makefile.
+
+
+The file VOCFILE.TXT has info on the .VOC file format. I don't know how
+stereo .VOC files are stored.
+
+The file COOLGUY.VOC is a sample file to play with.
+
+michael fulbright
+msf@as.arizona.edu

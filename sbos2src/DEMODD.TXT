@@ -1,0 +1,476 @@
+1.0 What this is about
+------------------------------------
+This document describes how to write OS/2 V1.X device drivers in C.  While they
+do require a small amount of assembler code, the majority of the device driver
+can be coded in C.  Only the interfaces to OS/2 and the functions that need
+to access the CPU directly need be written in assembler.
+
+When writing device drivers in assembler, the programmer has complete control
+over his code.  He can control the order of segments, what goes in which
+segment, and in what order.  He can pass parameters using any mechanism he
+wishes.  He can control exactly what gets linked in and what doesn't.  A C
+programmer, however, does not have quite that level of control over his final
+executable.  The compiler has made many decisions for him, or provides fairly
+remote control of these parameters.  The problem is how to regain the control
+that the assembler programmer enjoys, yet keep the efficiencies afforded by
+programming in a high level language.  This document describes how to gain
+that control.
+
+Also included in this package is a sample device driver with source code.  The
+sample does not do anything useful, except display an installation message and
+install.  The only commands it accepts are INIT, OPEN, CLOSE, WRITE, OUTPUT
+FLUSH, IOCTL, and DEINSTALL.  On all of these, except INIT, it does nothing,
+but return SUCCESS.  INIT installs the device driver.  It does demonstrate the
+techniques described here.  Anyone receiving this package is free to use the
+source code in any way they see fit.
+
+The text will reference the sample code as part of the explanation of the
+techniques.
+
+
+1.1 Scope
+------------------------------------
+This document assumes the reader is familiar with the organization and design
+of OS/2 device drivers.  It does not attempt to teach how to write device
+drivers, but how to implement them in C.  It also assumes a fairly solid
+background in Intel 80286 and 80386 CPU architecture and assembler language
+programming.  Finally, it assumes that the reader understands the use of
+Microsoft programming tools - LINK, LIB, and MAKE, and IBM's C/2 compiler.
+
+
+1.2 Tools used
+------------------------------------
+The tools used to build the sample code are:
+   IBM C/2  V1.1
+   IBM MAKE V2.0
+   OS/2 Library Manager/2 V1.01
+   OS/2 Linker/2 V1.20
+   Microsoft MASM V5.1
+
+The sample code will also compile with Microsoft C6.00A.
+
+
+2.0 Problems to be solved
+------------------------------------
+
+Segment Control - How do you control the order of segments in the final
+  executable?  How you do control which segments get grouped together, and
+  in what order?  How do you control which segments are kept loaded after
+  INIT time?  How do you control which segment library functions end up in?
+  How do you make sure the first thing in the Data Segment is the Device
+  Driver header?
+
+Compiler and Library Control - How do you make sure stack probes are disabled
+  in library functions?  What library functions can you use and why? What
+  compiler memory models do you use and why?  How do you guarantee access to
+  variables?
+
+Passing Parameters - How do you get the pointer to the request packet into a
+  C variable?  How do you load registers when calling the DevHelp facility?
+
+DOS Box Memory Usage - How do you minimize the amount of memory the device
+  driver consumes of the Real Mode DOS Compatibility session?  How do you
+  gain access to memory above the 1Meg line when entered in Real Mode?
+
+
+3.0 Segment Control
+------------------------------------
+Unlike programs, where you can organize your segments anyway you see fit, OS/2
+requires a specific organization for its device drivers.  The first segment
+in the executable (.SYS), must the main DATA segment.  The second segment must
+be the main CODE segment - the one that contains all the device driver's entry
+points.  All other segments, both CODE and DATA, will be loaded at INIT time,
+but they will be discarded after INIT is complete unless you have marked them
+as having IOPL privilege at LINK time and LOCKed them down at INIT time.
+Finally, the first thing in the main DATA segment must be the device driver
+header, which points to the strategy entry point, defines the name and
+characteristics of the device driver and has a pointer to the next device
+driver in the chain.
+
+The Demo Device driver uses 5 methods, in concert, to control segment
+organization and placement.  These are:
+1. The MASM .SEQ directive
+2. The MASM GROUP directive
+3. Knowledge of the compiler's naming conventions
+4. The SEGMENTS statement in the LINKer's definition (.DEF) file
+5. The /NT option of the compiler to name the code segment created
+
+The .SEQ directive tells the linker to place the segments in the executable in
+the order encountered.  This allows, along with knowledge of the compiler's
+naming conventions, allows us to place the main DATA segment before the main
+CODE segment.  We do this by defining empty segments with the same name and
+class as the segments defined by the compiler.  Combine this with the MASM
+GROUP directive and we now have our logical segments combined into physical
+segments in the order we want, and the physical segments placed in the
+executable in the order we need.  The use of this method can be seen in
+DEMO.ASM.
+
+We use the same idea for the CODE segments, but with a twist.  We are not
+constrained to using the compiler's default segment names.  The /NT option
+when invoking the compiler allows us to give the CODE segment generated any
+name we wish.  The names you will see in the sample code are: MAINSEG, INITSEG,
+and KEEPSEG.  Their purpose is obvious.  This step is seen in DEMO.MAK, in
+the definitions of the optXXXX variables.
+
+The next step to segment control is done by using the SEGMENTS statement in the
+definition file (.DEF) of the linker.  The logical segment names are placed in
+the order we want them to appear.  It is optional whether you wish to specify
+IOPL for the main DATA and CODE segments, but required for any others you wish
+to remain accessible after INIT time.  The ordering must match that
+encountered by the .SEQ statement, or extra segments with the same name and
+class will be generated and you will have no control over which of the 2
+segments stuff will go into.  This is seen in the file DEMO.DEF.
+
+One final step is needed.  At INIT time, a device driver is required to tell
+OS/2 how much memory the CODE and DATA segments require after INIT is done.
+Essentially, this means finding the offset of the last instruction in the
+CODE segment and the offset of the last byte used in the DATA segment.  It
+is easier to just create a new segment with a single global variable and force
+this logical segment to be the last in the GROUP that comprises the physical
+segment.  It is a simple matter, then, at INIT time to get the offset of these
+variables and store them in the INIT request packet on returning to OS/2.
+This is seen in the files DEMO.ASM, for the definition of these segments -
+LAST_D and END_TEXT.  The loading of the offsets into the request packet is
+done (in C) in INIT.C.
+
+
+4.0 Compiler and Library Control
+------------------------------------
+Other problems with using a compiled language compared to assembler are that
+you have less control over the 'memory model' used.  Essentially, this means
+what kind of pointers - NEAR or FAR are used as well as the way functions are
+called and how they return - again NEAR or FAR.  You also have less control
+over the inclusion of startup code and which segment holds the library
+functions linked in.
+
+The first thing is to decide on memory model.  My feeling is that LARGE is the
+way to go.  This lets you place your functions in any segment that is
+convenient, or that makes sense for your design, and be able to reach them
+from any other segment.  This means that functions that are used ONLY at
+INIT time can reach utility functions that are used later.  It means that
+library functions can be placed in a segment of their own, and called by any
+functions.
+
+The LARGE model also implies FAR data pointers.  This is almost
+a given.  All pointers passed by OS/2 to the device driver are FAR pointers.
+Most of the pointers you will construct will be FAR pointers.  To handle these,
+you need the LARGE or COMPACT model.
+
+Next, there is the question of Stack Segment and Data Segment.  Most modern
+compilers generate code that assumes SS equals DS.  In device drivers, this is
+emphatically false.  Fortunately, the Microsoft family of C compilers has an
+option that lets the programmer control whether the code generated makes this
+assumption or not.  Just say no.  These compilers also have an option that lets
+the programmer control whether DS will be loaded at the entrance to each
+function or not.  Since OS/2 loads DS, SS and CS before entering the device
+driver, just say no to this one as well.
+
+The net of this is that the memory model to be used is LARGE code, FAR pointers
+and don't assume DS=SS.  For IBM C/2, that translates to the option /Alfw.
+This can be seen in the optXXXX definitions in DEMO.MAK.
+
+Next is the problem of stack probes.  Microsoft compilers allow you to turn
+off stack probes in your code and it needs to be done.  OS/2 controls your
+stack size, not you.  The problem is what about library functions that were
+compiled with the stack probes turned on.  To solve this problem, we replace
+the stack probe function with a NULL function.  Unfortunately, Microsoft
+included the adjustment of the stack pointer for local variables in the same
+function.  To solve this problem, we need to write our own stack check
+function that does the variable allocation, but doesn't do the stack pointer
+comparisons.  This function is __chkstk, in DEMO.ASM.  The number of bytes
+to reserve for local variables is passed in AX, and a FAR call to made to
+__chkstk.  This function pops the return address, adjusts the stack pointer
+for the local variables and the returns.  It needs to use a bit of trickery
+in that adjusting the stack pointer causes the return address to be lost, so
+it save the address and pushes it back on the stack after the adjustment is
+made.
+
+Now we come to variable access.  Microsoft compilers put STATIC variables in
+different segments depending on whether they are initialized or not, when
+using the LARGE model.  They then store the segment of that variable in a
+static variable called $T2000n, where n is different for each static variable
+being referenced.  This causes untold problems in accessing the variable
+because the segment pointed to by $T2000n is valid at INIT time when the
+device driver is at ring 3, but it is no longer valid later, when the device
+driver is at ring 0.  To solve this problem, we force all the logical data
+segments into one physical segment using the techniques described above.  Then,
+we tell the compiler to use DS to access the variable with the near keyword.
+In general, all global and static variables should be defined with this
+keyword.  A simple hint - if you look into the .COD listing and see a $T2000n
+variable defined, you didn't get what you wanted and need to put a near on
+a variable.  A classic example of the use of the near keyword in this respect
+can be seen in LOCK.C.
+
+Finally, we come to the question of library functions.  Which ones can and
+cannot be used?  The general answer is that you cannot use those that will
+cause a call to the OS or will use the coprocessor.  These include all the
+floating point operations, file I/O, memory management functions, process
+control and time functions.  What remains are things like string and buffer
+management, searching and sorting, character classification and some data
+conversion (atoi(), for instance).  Fortunately, the kinds of things
+forbidden are either not the kinds of things done by device drivers or are
+provided by the DevHelp functions.
+
+5.0 Passing Parameters
+------------------------------------
+OS/2 uses registers to pass parameters back and forth with device drivers, but
+Microsoft compilers use the stack for most of these.  To solve this problem,
+we need a layer of assembler between the device driver and OS/2.  All entry
+points are in assembler.  All they do is push their parameters on the stack,
+making a stack based parameter, and call the C code.  The C code returns its
+results (usually an integer, in AX), and the assembler converts it to a form
+suitable to OS/2 (a particular flag set or cleared, for instance).  This can
+be seen in DEMO.ASM, in the form of the procedure _strategy.  It pushes the
+request packet pointer onto the stack and calls the real strategy function
+written in C.
+
+Calling the DevHelp facility is a bit different.  One method is based on the
+methods used for calling DOS in DOS based compilers.  A structure is defined
+that holds all the values that will be loaded into the registers.  This
+structure is loaded with the necessary values and a call made to an assembler
+function that loads the registers from the structure and then calls DevHelp.
+On return, it stores the register values back into the structure, allowing
+the C code to examine the results.
+
+There are at least 2 problems with this method that need to be overcome.
+One is that not all values are allowed to be loaded into segment registers.
+Put the wrong value in and you will get a TRAP 000D and the system will lock
+up.  The only recourse is to power off.  This is not exactly user friendly.
+Therefore, either a way must be divides to tell the assembler function to not
+load a segment value from the structure, or the structure must always have
+valid values in the segment register fields.  0 is always a valid value to
+load into a segment register.  It cannot be used, but it can be loaded.  The
+demo device driver uses the first method.  It is in DEVHLP.ASM.
+
+The second problem is that some DevHelp functions use DS to hold a selector
+and others use ES.  How can you make a general DevHelp caller when it has to
+use a segment register to point to the DevHelp entry point to make the
+indirect call?  The solution is to use CS.  This means that at INIT time,
+the DevHelp function needs to create an alias to the CODE segment that is
+writeable.  To do this, it needs the DevHelp functions.  The classic Catch-22.
+The solution to this is to create 2 new DevHelp functions - one that uses
+DS to call DevHelp and another that uses ES.  These live in the INIT segment
+and are discarded after INIT time.  These functions are also in DEVHLP.ASM.
+the C code to store the DevHelp entry point is in INIT.C.
+
+6.0 DOS Box memory Usage
+------------------------------------
+The final problem addressed by this document is reducing the amount fo memory
+used by the device driver in the DOS Compatibility Session (aka the DOS Box).
+OS/2 loads the main CODE and DATA segments into memory below the 1Meg line,
+using an already scarce resource - the amount of memory available for DOS
+programs.  The key to solving this problem is the fact that all other segments
+are loaded ABOVE the 1Meg line.  What this means is that you put only those
+functions that absolutely need to be there in the main CODE segment.  These
+include the DevHelp caller and all assembler entry points and the main
+strategy function.  All other code can be moved to above the 1Meg line.
+
+Moving the DATA segment is a little trickier.  The problem is that there is
+no way to easily define a second DATA segment at compile/link time.  It needs
+to be dynamically allocated.  All memory allocated via the AllocPhys DevHelp
+call comes from above the 1Meg line.  All of your system level global variables
+can be allocated and initialized at INIT time and accessed by pointer later.
+This lets you reduce the amount of DOS Box memory consumed to around 1K or so.
+
+The final problem with moving these memory blocks above the 1Meg line is that
+when in REAL mode, the CPU cannot access memory above the 1Meg line.  How can
+it get to the functions and data there?  The solution to this is don't run in
+REAL mode.  At every entry point - there are only 5 possible, Strategy, Timer,
+Interrupt, Notify, and IDC - check to see if the CPU is in REAL mode.  If it
+is, make a call to the ReadToProt DevHelp function, and note in a local
+variable that the mode change was made.  On exit, if the mode was changed,
+go back via ProtToReal.  Also note, and this is REAL IMPORTANT - if you enter
+in REAL mode, you cannot do a FAR call until you have changed to PROT mode;
+and after you change back to REAL mode, you cannot do any FAR returns.  That
+means that the mode changing functions must all be in the main segment.
+
+Note that this path may be seldom taken, depending on the number of interrupts
+taken and how much time the CPU spends in the DOS box.  The chances of hitting
+it are reduced as OS/2 switches the CPU to PROT mode when entering the Strategy
+function and Notify cannot be called fro a DOS program.  This leaves the Timer
+and Interrupt and IDC calls as the only ones to worry about.  Since OS/2 is
+always timeslicing into PROT mode, even when the DOS box is the active session,
+the chances are reduced that the CPU will be in REAL mode when one of these
+entry points are activated.  Regardless, that possibility needs to be accounted
+for.
+
+An example of this method can be seen in STRATEGY.C.  This call is not needed
+here, but since the sample device driver has no other entry point, the
+mechanism is shown here.
+
+7.0 Some other ideas
+------------------------------------
+There are other ways to call DevHelp.  Some people write a separate assembler
+level function for each DevHelp call.  Others pass the DevHelp entry point
+on the stack instead of storing it in the CODE segment.  Some write several
+generic DevHelper callers.  The point is that there are lots of solutions to
+this problem.  You need to make sure that the one you use is suitable to your
+needs.  You also need to make sure that they always call OS/2 from the main
+CODE segment as any function that registers an entry point will use that CODE
+segment as the selector portion of the entry point.
+
+Another thing to watch out for is changing from REAL to PROT mode or when
+going back.  After the mode change has been made, the only valid address
+on the stack is the return address.  That is why those functions do not use
+the normal DevHelper call in the sample code.  They can be found in
+ASMUTILS.ASM.
+
+It is useful to have the compiler generate combined listings - that is, the
+listing should contain the ASM listing along with the C code.  The option
+to make Microsoft compilers do this is /Fc.  Another thing should be to tell
+the compiler to pack data structures.  OS/2 request packets have no extra
+space in them.  Another useful item is the MAP file.  It will help you make
+sure what is being generated is what you really want and it will help when
+using some debuggers.
+
+8.0 Putting it Together
+------------------------------------
+This section explains the sample device driver included in this package, in
+light of the above discussion.
+
+Put
+
+DEVICE=<path>\DEMO.SYS
+
+in your CONFIG.SYS and reboot.  You will see the loading message come up.
+After re-booting is done, you can copy files to the $DEMO and the system will
+say all went well.  If, however, you say copy $demo to some file, you'll get
+an error saying that $DEMO doesn't like that command.  You are seeing the
+difference between READ and WRITE.  READ is not recognized, while WRITE is
+answered OK, we did it.
+
+8.1 Directory Structure and the Make File
+------------------------------------
+The demo can be compiled by running MAKE against DEMO.MAK.  This make file
+will generate the entire device driver, the MAP, and all listings or .COD
+files.  It creates a library with all the .OBJ files stored in it, as well
+as a MSG file used by INIT to display the loading commercial.
+
+Currently, it stores the .LST and .COD files in a separate subdirectory off
+the current one, the .OBJ in another, and all messages from the compile and
+masm and link in a third.  These directories are defined in the variables
+lst, obj and msg, defined at the beginning of the make file.  Note that they
+use . as the current directory, making them relative references, not absolute.
+Other variables are defined to tell MAKE where the library file is (and should
+go) and where the source and include files can be found.  Also note that the
+.ARF file has a reference to both the.\obj and .\lst subdirectories.  If you
+change the .MAK file, you need to change this too.
+
+There are 4 variables defined that put all the compiler options in one semi-
+user friendly block.  The first is OPTMAIN.  This will cause the code from
+this file to be included in the MAIN code segment (named MAINSEG).  The second,
+OPTSIZE, does the same, except it has size optimization turned on instead of
+none like the others.  OPTKEEP causes the code to go into the KEEPSEG segment
+and OPTINIT puts it into the INITSEG segment (surprise!).
+
+Each set of options has the link disabled (/c), stack probes disabled (/Gs),
+structure packing (/Zp), warning level 3 (/W3), and the model as described
+above (/Alfw).  It causes a .COD listing to be generated (/Fc), puts the .OBJ
+file in a specific subdirectory (/Fo), renames the code segment generated
+(/NT) and redirects the error messages to the msg subdirectory.
+
+The rest of the MAKE file is standard stuff.  Each separate file is given
+a separate set of dependencies so I can control the options on each.  They
+then are added to the library.
+
+
+8.2 Assembler files
+------------------------------------
+There are 4 assembler files:
+   ASMUTILS.ASM
+   BRKPOINT.ASM
+   DEMO.ASM
+   DEVHLP.ASM
+
+These contain the entry points for the device driver, the DevHelp caller, the
+segment controlling stuff described in Section 3.0, and a bunch of utility
+functions.
+
+ASMUTILS.ASM has a bunch of utility functions.  Not all are used by the DEMO
+device driver, but they are useful as examples of the kinds of things you
+resort to assembler for.  Included are the calls to DevHelp to change the CPU
+to REAL mode a back.
+
+BRKPOINT.ASM holds the code to do an INT3 on demand.  This function causes
+a breakpoint in many debuggers.  When a call to this function is placed in
+INIT code, you can trace your initialization code.  I also make it a habit
+of creating an IOCTL call that invokes this function.  That lets me get into
+my device driver with a debugger without recompiling.  This is a great boon
+when you want to debug a particular version without re-compiling.
+
+DEMO.ASM is the main assembler code file.  It holds the strategy entry point,
+it does all the segment and group definition stuff described in Section 3, and
+it holds the main DATA segment, with the device driver header.
+
+DEVHLP.ASM has the DevHelp caller, along with the temporary one used at INIT
+time to get the DevHelp entry point stored in the main CODE segment.  This
+variable is also defined in this file.
+
+
+8.3 C files
+------------------------------------
+There are 8 C files.  These are the meat of the function to the demo device
+driver.  They include a bunch of utility functions as well as the necessary
+stuff.  They are:
+   INIT.C
+   PRTMSG.C
+   STRATEGY.C
+   BADCMD.C
+   DDUTILS.C
+   GDTMEM.C
+   LDTMEM.C
+   LOCK.C
+
+INIT.C holds the function to process the INIT command from OS/2.  Basically, it
+sets up the DevHelp entry point, figures out the name of the message file,
+prints the loading message, sets up a pointer to the milliseconds since IPL
+timer, tells OS/2 how much code and data to keep loaded and exits.
+
+PRTMSG.C is used for printing messages at INIT time.  It won't work at any
+other time as it uses DOSGetMessage and DOSPutMessage.
+
+STRATEGY.C is the main C function that figures out what OS/2 wants it to do
+and calls the proper function to do it.  It also makes sure that the CPU is
+in PROT mode before proceeding.  As explained above, this is unnecessary, but
+it is instructive.  Most of the functions just set the status to Command Not
+Recognized.  Others say 'Yes, we did it', when they really didn't.  INIT is
+the only command that really calls another function.  After we get past all
+this, dev_done() is called (except for INIT, when it isn't valid), to set the
+request packet status.
+
+BAD_CMD.C just returns the value needed to set into the request packet status
+to reflect that fact that we don't recognize the command.
+
+The rest of the files hold all sorts of utility functions.  There is stuff to
+allocate and free memory, allocate GDT slots, Lock and unlock segments, block
+a task and yield the CPU temporarily, and do all sorts of other things.  Some
+of these are used by the demo device driver, others are included for
+instructional purposes (actually, I was too lazy to take them out).
+
+8.4 H files
+------------------------------------
+There are 4 include files.  Three that do the actual work and a fourth to
+gather them all together in one include line.  The 3 are broken into constant
+definitions, structure definitions and function prototypes.
+
+8.5 Other files
+------------------------------------
+DEMO.ARF - Automatic Response file for the link stage.  Note that this file
+           assumes that the map file is to go to the .\lst subdirectory and
+           the main .obj file comes from .\obj.  If you change the subdir
+           structure, be sure to change these as well.
+
+DEMO.DEF - Definition file for the link stage.  Here is where you set the IOPL
+           bit on for a segment.
+
+DEMO.TXT - Source for the message file.
+
+DEMO.LIB - Library file made of all the .OBJs
+
+DEMO.MSG - The message file.  This is where the text for messages displayed
+           during INIT time are kept.
+
+DEMO.SYS - The device driver (ta da!)
+
+
+

@@ -1,0 +1,13 @@
+This is a newer version of the multithreaded tracker. I changed
+all the memory allocation to use calls to the OS/2 API instead of
+using malloc/free and it seems to have cleared up some of the problems.
+
+Note that alot of debugging info gets spit out - if you have problem
+and the program dies it would be helpful to have a copy of the output.
+
+If you have the driver configured to SBREG then the output is always in
+mono, no matter if you specify -stereo or not. On a SBPRO the output
+is stereo by default.
+
+michael fulbright
+msf@as.arizona.edu

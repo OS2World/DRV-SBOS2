@@ -1,0 +1,394 @@
+PROGRAMMING GUIDE TO THE SBOS2 DEVICE DRIVER
+Michael Fulbright
+October 24, 1992
+
+
+The SBOS2 device driver provides a low level interface to the Sound Blaster
+and Sound Blaster Pro sound cards. This document describes the programming
+interface for SBOS2. For more information on SBOS2 send email to
+
+Michael Fulbright
+msf@as.arizona.edu
+
+
+INTRODUCTION TO THE SOUND BLASTER/SOUND BLASTER PRO
+---------------------------------------------------
+
+This is intended to be a brief overview of the Sound Blaster (SBREG)
+and Sound Blaster Pro (SBPRO) sound cards. There are many cards
+available now which are SBREG compatible, so SBREG refers to all of
+these cards. I will use SB to refer to both the SBREG and SBPRO sound
+cards. This is by no means a complete tutorial on these sound cards,
+but hopefully provides enough information to get started.
+
+First lets summarize the hardware differences between the SB and SB Pro.
+
+The SBREG provides a single 8 bit D/A output port and a single 8 bit
+A/D input port. It can sample/playback at frequencies between
+approximately 4000 and 22000 Hz.  It has no onboard mixer or user
+controllable filtering. Newer versions of the SBREG allow recording
+from a microphone or from a line in jack.
+
+The SBPRO allows recording and playback in stereo, both channels
+being 8 bits wide. It can operate between approximately 4000 and 43500
+hz in mono. In stereo the true rate is one half of the programmed
+rate, so the maximum rate in stereo is around 22000 hz. Currently only
+stereo playback is allowed under SBOS2, basically because I dont know
+how stereo recording works!  The SBPRO has an onboard mixer which
+allows the levels of numerous inputs and outputs to be software
+controlled. It also provides user controllable filters for input and
+output.
+
+
+THE SBOS2 DEVICE DRIVER
+-----------------------
+
+The SBOS2 device driver implements up to two new devices under OS/2. If
+loaded with the SBREG option the only device created is SBDSP$, whereas
+on the SBPRO the additional device SBMIX$ is created. The device SBDSP$
+is used to write and read data from the D/A and A/D ports, whereas SBMIX$
+is used to program the onboard mixer of the SBPRO. An application can
+test for the presence of these devices by attempting to open them with 
+DosOpen(). If SBDSP$ exists but SBMIX$ does not then one can assume that
+the sound board is a SBREG. Currently SBOS2 does not auto-detect the board
+present in the computer - it relies upon the user supply the board type
+by using the SBREG or PAS16 options.
+
+Only one program can access SBDSP$ at one time. In addition, only one
+program under OS/2 should access the DSP part of the SB at any time,
+which includes DOS and Windows applications. I've heard that MMPM/2
+and SBOS2 can coexist peacefully if both are not running simultaneously,
+ie. running a task that uses SBDSP$ while an MMPM/2 task is running.
+A version of SBOS2 which includes a VDD to virtualized the access to
+the SB for DOS and Windows apps is in the works. Until this is
+released be sure to stress to the users of the software that the above
+conflicts should be avoided. 
+
+The device SBDSP$ does several things when it receives an Open
+request.  It first checks to see if it is already open, and if so it
+refuses the pending open request. If not it allocates 192k of buffer
+space using the AllocPhys DevHelp routine. This allows two 64k chunks
+of memory to be found which do not cross a 64k boundary. This makes
+the DMA transfers simpler to program. It also tries to install an
+interrupt handler for the SB IRQ. If successful it then proceeds to
+initialize driver specific data and returns. When SBDSP$ is closed it
+releases the 192k of ram and the SB IRQ, so that a task other than
+SBOS2 can grab the IRQ.
+
+
+The device SBMIX$ can be accessed by several programs simultaneously,
+although this isnt necessarily desirable. A program does not receive
+notification if another task changes the mixer levels, so it is not
+safe to assume that the mixer levels are the same as you last set
+them.  If a task desires to have exclusive control of SBMIX$ it can
+call DosOpen() with the ACCESS_DENYREADWRITE option, which will
+prevent any further tasks from opening SBMIX$ (I have not tested
+this). The device SBMIX$ only receives Open, Close and IOCtl commands,
+you cannot read or write to SBMIX$.
+
+
+
+THE SBDSP$ PROGRAMMING INTERFACE
+--------------------------------
+
+There are numerous sample programs provided in this archive which
+demonstrate how to open and close SBDSP$ and perform various IOCtl
+commands. I will cover these topics in detail in this section.
+
+First one should be familiar with the include file sblast_user.h.  It
+is required by any program using SBOS2. It defines numerous constants
+for the use of SBOS2. These constants should be used instead of hardcoding
+numbers. Though it is unlikely these constants will change, it is best
+to be safe than sorry.
+
+
+OPENING AND CLOSING SBDSP$
+----------------------------
+
+To open SBDSP$ use the DosOpen() service. The following section of code
+does this
+
+------------------------
+ULONG status, action;
+HFILE audio_handle;
+
+
+  status = DosOpen( "SBDSP$", &audio_handle, &action, 0,
+		   FILE_NORMAL, FILE_OPEN,
+   OPEN_ACCESS_READWRITE | OPEN_SHARE_DENYNONE | OPEN_FLAGS_WRITE_THROUGH
+   | OPEN_FLAGS_NOINHERIT | OPEN_FLAGS_NO_CACHE,
+			  NULL );
+
+  if (status != 0)
+    perror ("Error opening audio device");
+--------------------
+
+ Note all of the flags used to open the device. The primary ones
+required are the ones starting with OPEN_FLAGS. The flags
+OPEN_ACCESS_READWRITE and OPEN_SHARE_DENYNONE seem to imply more than
+one task can access SBDSP$ and perhaps should be different, although
+SBDSP$ will deny an open request if it is already open. The variable
+action indicates how DosOpen() satisfied the open request. If status
+is non-zero then there was an error opening SBDSP$, which means
+another task is using SBDSP$ or the device driver SBOS2.SYS is not
+loaded. The variable audio_handle recieves the handle to be used by
+subsequent i/o commands for SBDSP$.
+
+Once a program is finished with SBDSP$ it should close it by using
+DosClose(). SBDSP$ checks to see if any data is presently in the
+DMA buffers for output and if so flushes the buffers.
+
+READING FROM SBDSP$
+--------------------
+
+To sample data from the the SB's A/D port you use the DosRead()
+command, as follows:
+
+
+    status = DosRead(audio_handle, &buf, maxreadsize, &numread);
+
+here 
+      audio_handle  is the handle returned from the DosOpen command above
+      buf           is a pointer (unsigned char) to the storage buffer
+      maxreadsize   is the number of bytes requested to be read
+      numread       gives the actual number of bytes read.
+
+Use of this command is given in OS2RECORD.C.
+
+Once a read command is received by SBDSP$, it continuously fills its
+internal DMA buffers. If an application does not empty these buffers
+fast enough they will fill up, meaning that data is going to be lost.
+The default behavior of SBDSP$ is to create an error, since ususally
+you dont want to lose data while sampling. Currently the error
+handling is poor, as the user usually has to kill the offending task.
+
+There is a IOCtl command to change this default behavior and have
+SBDSP$ ignore the buffer overflow. This is useful is one is trying to
+write a real-time task which is not concerned if data is lost, like an
+oscilloscope-style display. This IOCtl is covered below.
+
+
+WRITING TO SBDSP$
+------------------
+
+To send output using the SB's D/A interface, use the following command
+
+    status = DosWrite(audio_handle, &buf, numtowrite, &numwritten);
+
+here audio_handle and buf are the same as in the example above. The
+variable numtowrite gives the number of bytes to write from the buffer
+buf[], and numwritten returns the actual number of bytes written. The
+file OS2PLAY.C demonstrates how to playback recorded sounds. Unlike
+the read command, if you fail to supply data to SBDSP$ as fast as it
+plays it, no error results. It just waits till you send more data.
+
+SBDSP$ does not actually output data until the internal DMA buffer is
+filled. By default the DMA buffer size is 64k-2 bytes, so at a rate of
+8000 hz it will take 8 seconds of output before the buffer is played.
+Usually you can send 8 seconds worth of data to SBDSP$ in a fraction
+of a second, so this isnt a problem. But keep this in mind when
+writing software.
+
+To send stereo data to a SBPRO just alternate left/right samples.
+
+
+IOCtl commands
+--------------
+
+IOCtl stands for I/O Control.  The SB has several configurable parameters
+which are accessable using the DosDevIOCtl() command. For example, to
+set the playback/sample speed of the SB use the following
+
+    datlen=2;
+    parlen=0;
+    status=DosDevIOCtl(ahandle, DSP_CAT, DSP_IOCTL_SPEED,
+                      NULL, 0, &parlen,
+                      &speed, datlen, &datlen);
+
+The parameters DSP_CAT and DSP_IOCTL_SPEED are defined the include file
+"sblast_user.h". Each IOCtl command has a number associated with it.
+
+Also
+     speed       is an unsigned short int (16bit) containing the desired speed
+     datlen      is an unsigned long  int (32bit) containing sizeof(speed)
+     parlen      is an unsigned long  int (32bit), and should ALWAYS be 0.
+
+There are several other IOCtl commands available. The following documents
+each availble to the device SBDSP$
+
+DSP_IOCTL_SPEED    - sets speed
+	Expects a 2 byte unsigned int containing speed (datlen=2)
+	The max speed for the SBPRO is given by DSP_MAX_SPEED_PRO, and
+	for the SBREG it is DSP_MAX_SPEED_REG, whereas the min speed
+	for both is DSP_MIN_SPEED.
+	Usually the card cant be set for the exact speed requested,
+	but is set to something close. The actual speed used is
+	returned in the variable which contained the desired speed.
+	If you send a value of 0xFFFF as the speed the current speed
+	is returned.
+
+DSP_IOCTL_RESET    - resets card
+	Expects no data (datlen=0)
+
+DSP_IOCTL_VOICE    - turns output speaker on or off
+	Expects a unsigned char. Zero means off, non-zero means on (datlen=1)
+
+DSP_IOCTL_FLUSH    - flushes output buffer
+	Expects no data (datlen=0)
+
+DSP_IOCTL_COMPRESS - controls hardware compression
+	Expects a unsigned char. Defined values given in sblast_user.h
+
+DSP_IOCTL_STEREO   - enables/disables stereo mode on SB Pro only.
+	Expects an unsigned char. Zero means off, non-zero means on (datlen=1)
+
+DSP_IOCTL_BUFSIZE - set the current DMA buffer size.
+	Expects an unsigned short int. Min legal value is DSP_MIN_BUFSIZE,
+	and max value is DSP_MAX_BUFSIZE (def'd in sblast_user.h).
+
+	This can be useful command, but it has the potential for
+	causing	problems.  By default the DMA buffer size is
+	DSP_MAX_BUFSIZE, which is 64k-2 bytes.  There are real-time
+	applications where a much smaller buffer size is desirable.
+	Sending a value of 0xFFFF returns the current buffer size.
+
+	The way this command can cause problems is if you change the
+	buffer size while the buffers are being used. No check is
+	currently made by SBDSP$. It is best to close and reopen SBDSP$ and
+	set the new buffer size, just to make sure everything is reset before
+	changing the buffer size.
+	
+DSP_IOCTL_OVERRUN_ERRNO - Set behavior to buffer overflow
+	Expects a short int.
+	When sampling it is possible for the internal buffer of
+	SBDSP$ to fill, resulting in lost data. By default the
+	SBDSP$ mixer returns an error and usually the application
+	has to be closed. 
+
+	By sending a value of 0 this causes SBDSP$ to ignore
+	overflows. In the case of an overflow it stops sampling until
+	the user empties the current buffer.
+
+	By sending a non-zero value this causes SBDSP$ to return an
+	error if the buffer overflows. Currently the behavior is
+	unpredictable afterwards, and it is best to end the application.
+
+
+The most useful of the above are DSP_IOCTL_RESET, DSP_IOCTL_STEREO and
+DSP_IOCTIL_SPEED. The commands DSP_IOCTL_BUFSIZE and
+DSP_IOCTL_OVERRUN_ERRNO can be used for real-time applications. Look
+at the source for PMOSCOPE for an example. Here the buffer size is
+made equal to the number of samples to be displayed at a time on the
+screen. The overflow error is set to zero so that if we don't draw as
+fast as data comes in we just skip to a current sample.
+
+Some more notes on programing SBDSP$ are in order. Currently the
+program assumes that the entire DMA buffer is to be played at a single
+speed. So if you set the sample rate to one speed and send data, the
+change the speed and send more data, causing the DMA buffer to be
+played, the entire buffer will be played at the later speed. A
+workaround is to flush the buffer before sending the next sample, if
+it is at a different speed. I've had a report this doesnt currently
+work so i'm looking into it. This same comment applies to stereo
+playback, ie. it is assumed the entire buffer is to be played either
+in stereo or mono.
+
+In general, it is not a good idea to change the parameters controlled
+by the DSP_IOCTL commands once you start output or input. If your
+application needs to do so (for example a program which plays several
+VOC files) it is probably a good idea to close and reopen SBDSP$ each
+time parameters need to be changed.
+
+
+
+MIXER PROGRAMMING
+-----------------
+ 
+The device SBMIX$ is opened and closed just like SBDSP$, except you
+specify SBMIX$ as the filename instead of SBDSP$. You dont, however,
+read or write to SBMIX$. It only accepts IOCtl commands. In addition,
+SBMIX$ only works on the SBPRO, so if you are writing software that uses
+SBMIX$ be sure to let the user know it wont work on a regular SB.
+
+Unlike SBDSP$, multiple applications can open SBMIX$. This means that
+another application can change the mixer settings without your
+application receiving notification.  I'm not sure how to handle this
+behavior, since I don't know how to tell the device driver to notify
+an application of a change. Probably the best thing to do is to read
+the current settings before making a change. Another thing one could
+do is to open SBMIX$ with attributes which cause it to not be shared.
+
+The IOCtl commands for the mixer use two data structures, defined in
+sblast_user.h, sb_mixer_levels and sb_mixer_params. The following
+list gives all the commands available. 
+
+Commands using sb_mixer_levels
+------------------------------
+  These commands require datlen=sizeof(struct sb_mixer_levels). Check the
+file sblast_user.h for legal values of the fields of the sb_mixer_levels
+structure. Note that this structure changed starting with v0.91 of the
+driver, with the CD INPUT becoming a stereo mixer instead of a mono mixer.
+
+MIXER_IOCTL_SET_LEVELS
+MIXER_IOCTL_READ_LEVELS
+
+  These commands write and read the mixer levels. See the programs
+setmixer.c or mixertool.c for examples of their use.
+
+Commands using sb_mixer_params
+------------------------------
+  These commands require datlen=sizeof(struct sb_mixer_params). Check the
+file sblast_user.h for legal values of the fields of the sb_mixer_params
+structure.
+
+MIXER_IOCTL_READ_PARAMS
+MIXER_IOCTL_SET_PARAMS
+
+  These commands write and read the mixer parameters. See the program
+mixertool.c for examples of their use.
+
+Other commands
+--------------
+MIXER_IOCTL_RESET
+
+   Resets the mixer. I dont recommend using this, but rather you
+should reset the mixer by sending what you consider default
+levels and parameters if you need to 'reset' the mixer.
+
+
+
+
+CONCLUSIONS
+------------
+
+The SBOS2 package is still in development, which means the information
+in this document may not apply to future releases of the driver. I
+believe the data structures are fixed, and the IOCtl command names
+will stay the same. It is best to use the constants defined in
+sblast_user.h instead of hardcoding numbers, in case I need to change
+the numbers. 
+
+There are still some serious problems with the driver which are only
+discovered when someone tries something new I never thought of. If you
+uncover a problem please let me know, i want to fix it. When reporting
+a problem it is helpful to know the type of system you have, namely is
+it a fast 486 or not. Call me paranoid, but it seems that most SB
+problems come up on fast machines. Then let me know in a few sentences
+what you were trying to do and the exact response of the system (error
+messages, sounds, ect). Please don't send source code unless I ask.
+
+And if you write something you think other people would appreciate
+then send it to me. I am starting a directory for contributed
+software.  I am also interested in starting a mailing list for
+programming related topics, sorta like the sound blaster mailing list.
+I think only people who have read this document would know about the
+list, so we could keep the conversation related to programming. Send
+me email if you're interested, and if you have every managed a mailing
+list. I have a machine I can set it up on, i'm just not sure about
+software.
+
+I can be reached at
+
+michael fulbright
+msf@as.arizona.edu
+

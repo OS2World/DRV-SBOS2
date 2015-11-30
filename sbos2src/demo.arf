@@ -1,0 +1,6 @@
+.\obj\sbos2+
+/map /Info /NOD /NOP
+sbos2.sys
+.\lst\demo.map
+demo+d:\msc51\lib\llibce+d:\os2\doscalls
+demo.def

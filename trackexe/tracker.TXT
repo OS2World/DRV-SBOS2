@@ -1,0 +1,100 @@
+tracker is a soundtracker player for sparc or silicon graphics
+machines.
+To build it, just use the appropriate makefile.
+
+
+tracker is a public domain program, it is not guaranteed to do anything
+at all, either useful or useless. Do with it as you will, but 
+use it at your own risk.
+
+``Soundtracker'' is a family of music composition programs
+that exists on the amiga. The resulting data files (modules)
+have been appearing on ftp sites for some time now.
+
+For a machine with sufficient horsepower and some audio capability,
+it is possible to emulate the amiga audio hardware in real time,
+and play those modules.
+After that, you're only limited by the machine's capabilities. The
+sparc is a bit poor (as a 8K machine), in contrast with the indigo,
+which gives an almost perfect rendition of most modules.
+
+This release of tracker supports most amiga soundtracker file formats,
+and plays most of the existing effects, so that about 95% of the modules
+are output correctly.
+
+There is no man page (write it yourself), but a short description of
+the options can be obtained with tracker -h.
+
+Here is some supplementary information.
+
+Environment variables:
+OVERSAMPLE can be used to control the acurateness of the reproduction.
+(It is the number of samples used to output one audio word).
+The higher, the better, but the more CPU it will use. The default
+value (1) is quite good at high frequencies, but not so for, for instance
+a poor sparc station's 8000 Hz. You can try, say, 2 or 3. After that,
+there won't be any noticeable improvement, and anyway, the program won't
+be fast enough to keep up with the output rate.
+
+FREQUENCY can be used to set the audio output at a specific frequency
+(if the hardware supports it). The hardware will decide which frequency
+to actually use, according to other external parameters.
+
+MONO on the sgi can be used to force mono output, which uses less
+cpu power.
+
+TRANSPOSE is the number of halftones to transpose each note (>0 is higher).
+Useful for low frequency sparcs which can't play some tunes accurately, or
+when you get bored...
+
+Most of the switches are here for compatibility reasons. As there
+are billions and billions.. wait, wrong series. As there are lots and
+lots of soundtrackers clones out there, they are not *quite* 
+compatible with one another. Mainly, there was an old format and a 
+newer format.
+You can force one of these formats by either renaming your command
+to ntracker or otracker, or you can use the -n and -o switch to try
+reading a file as a new tracker file, or an old tracker file.
+The default is to try first the new tracker format, then revert to
+the old tracker format (switch -b for both).
+There is also a speed problems. Most trackers use some timing which
+is dependent upon the powerline frequency... 60Hz in the states, 50Hz
+in Europe. Most modules have been composed in Europe, so the default
+is 50Hz, but you can set that speed to 60Hz with -s60.
+(Incidentally, you can try and speed up a module to amazing speeds like
+-s200, just for fun).
+
+The -f switch is not really there to be used, except if there is a
+module you really can't play, then try -f2.
+
+The -r switch is obvious (I hope).
+
+The -m value is a mix value. In real-world stereo, you hear each side on
+the other side, at least a bit. With headphones, this effect disappears,
+unless you mix a bit of each side on the other side.
+0 is spatial stereo (not for headphones), 100 is mono.
+A reasonable value is 30. The perceived change tends to be logarithmic,
+interesting values would be 30, 70, 85, 90, 92, 95...
+
+Finally, the program itself is reasonably smart, you can use it as a
+module jukebox by giving a tracker *  -like command line, then skip from
+one module to the next by sending a signal 2 (usually ^C) and aborting
+altogether with a signal 2 (usually ^\). It recognizes also modules
+packed with either compress or zoo... Adding your own compression method
+should be easy. It is also fairly difficult to crash, because tracker
+modules are notorious problem files, with lots of formats problems.
+
+
+The original idea of the tracker was by Liam Corner, back when it
+was called str32, but there is precious little left of his original
+code (if any of it). I must admit, I would never have had the idea
+(nor the courage) to start that project all by myself.
+
+You can do what you want with the source code, though I would suggest
+that Liam and myself be cited if you add anything to it.
+
+Send bug reports to espie@ens.fr,
+encouragements and nice things to espie@ens.fr and zenith@dcs.warwick.ac.uk.
+--
+
+	Marc Espie, Paris, december 11th 1991.

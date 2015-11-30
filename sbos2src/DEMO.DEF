@@ -1,0 +1,16 @@
+LIBRARY demo
+PROTMODE
+SEGMENTS NULL           CLASS'BEGDATA'   PRELOAD
+         _DATA          CLASS'DATA'      PRELOAD
+         CONST          CLASS'CONST'     PRELOAD
+         FAR_BSS        CLASS'FAR_BSS'   PRELOAD
+         _BSS           CLASS'BSS'       PRELOAD
+         c_common       CLASS'BSS'       PRELOAD
+         BUFFERS        CLASS'LAST_DATA' PRELOAD
+         LAST_D         CLASS'LAST_DATA' PRELOAD
+         MAINSEG        CLASS'CODE'      PRELOAD
+         _TEXT          CLASS'CODE'      PRELOAD
+         END_TEXT       CLASS'CODE'      PRELOAD
+         KEEPSEG        CLASS'CODE'      PRELOAD IOPL
+         INITSEG        CLASS'CODE'      PRELOAD
+

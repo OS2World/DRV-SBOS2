@@ -1,0 +1,14 @@
+Changes in V0.91
+----------------
+
+1) Correctly handle IRQ2.
+
+2) Added QUIET option - loads driver without any output at bootup.
+
+3) Added PAS16 option - loads driver, does not check for presence of soundcard.
+                        Necessary since PAS 16 is not in SB mode at bootup.
+
+4) Options no longer have to be in uppercase.
+
+5) Added IOCtls to control DMA buffer size and handling of buffer
+   overflows when sampling.

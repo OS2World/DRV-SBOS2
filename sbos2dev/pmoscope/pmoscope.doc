@@ -1,0 +1,42 @@
+This program displays real time input from the SB in a PM window. 
+It is useful for setting the recording volume in conjunction with
+mixertool so that the input signal is not too weak or strong.
+
+
+To run pmoscope use the following commandline
+
+PMOSCOPE sample_rate [buffer_size]
+
+where
+	 sameple_rate = sampling rate in Hz. This is a REQUIRED parameter.
+
+	                A regular SB can go up to around 21500 HZ,
+			while a SB Pro can reach 43400 hz. The	
+                        higher the rate the more work the computer has to
+                        do to display the data. It is possible that at high
+                        sampling rates that the display skips over sections
+                        of the input signal in order to keep up.
+
+         buffer_size  = Input buffer size. This parameter is optional.
+
+			The buffer size determines how many samples are plotted
+			per screen update. The default is 512. Note that if
+			buffer_size is greater than the number  of horizontal
+			pixels in the display window then several data points
+			are plotted per screen column.
+
+
+You can resize the window while the display is active. A smaller
+window will result in faster refresh. One screenful of data displays
+(buffer_size/sample_rate) seconds of data, so if you set sample_rate to
+42000 hz and buffer_size to 128 bytes, one screen full will display about
+3 msec of data. 
+
+I find that the songs on the first side of Pink Floyd's Dark Side of the Moon
+are interesting to sample this way, in particular the synthesizer parts.
+
+
+michael fulbright
+msf@as.arizona.edu
+
+

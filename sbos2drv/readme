@@ -1,0 +1,187 @@
+SBOS2 Sound Blaster Device Driver for OS/2 
+Version 0.91
+By Michael Fulbright (msf@as.arizona.edu)
+
+
+INTRODUCTION
+------------
+
+SBOS2 is a Sound Blaster device driver for use under OS/2 V2.0. In
+this document I will use the following abbreviations
+
+SBREG - The original soundblaster
+SBPRO - The Sound Blaster Pro
+PAS16 - The PAS 16 card
+SB    - Any of the above
+
+Currently the only support for sound cards under OS/2 is with the
+MMPM/2 package, which is an add-on package available from IBM. The new
+WINOS2 3.1 package will include the sound card support available in
+Microsoft Windows 3.1, but only under a WINOS2 session. 
+
+The SBOS2 package provides a pure OS/2 interface to the SB. Its intent
+is to stimulate the development of OS/2 software for the SB card.  It
+is not compatible with MMPM/2 or WINOS2 3.1. In fact, it will not work
+if any other sound card device drivers are loaded. As the commercial 
+support for sound cards under OS/2 emerges this could change in future
+releases of SBOS2.
+
+This document describes how to install the SBOS2 device driver and then
+briefly discusses the rest of the SBOS2 package.
+
+INSTALLATION
+------------
+
+In order to access the SB card it is necessary to load the SBOS2.SYS device
+driver. The driver has been extensively tested and shouldn't cause any
+problems, but just in case I must warn you that it is possible for the
+driver to lock the machine up during bootup.  In this case your hard disk
+will become inaccessible until you run chkdsk on it after booting from a
+floppy disk. If this sounds like something you are not comfortable with
+then I recommend you stop now.
+
+Ok, well on with the installation. Put the file SBOS2.SYS somewhere on
+your harddisk (the root directory isn't a bad place). Then add the following
+line to your CONFIG.SYS (preferably near the bottom),
+
+DEVICE=<path>SBOS2.SYS IRQx ADDRyyy [SBREG] [PAS16] [QUIET]
+
+where
+   <path> = directory where SBOS2.SYS is stored
+      x   = IRQ # for SB card (in DECIMAL)
+     yyy  = Address of SB card (in HEX, either 220 or 240)
+
+There should be no spaces between IRQ and the number x nor between ADDR and
+the number yyy. Say you card is on IRQ 5 and address 240, then the line in
+CONFIG.SYS would be (assuming SBOS2.SYS is in the root directory of drive D)
+
+DEVICE=D:\SBOS2.SYS IRQ5 ADDR240
+
+There are two optional parameters, SBREG and PAS16. If you have a regular
+SB then add the SBREG keyword, whereas if you have a PAS 16 card use PAS16.
+DO NOT USE BOTH.
+
+What if you have a SB PRO? The driver defaults to SB PRO, so you don't need
+to add anything.
+
+As an example, say you have a regular SB on IRQ 2 and address 220, then
+your line in config.sys would be
+
+DEVICE=D:\SBOS2.SYS IRQ2 ADDR220 SBREG
+
+Some people have told me that there machine locks up if there is any
+output to the screen during bootup. If you add the QUIET keyword to
+the line in CONFIG.SYS which loads SBOS2.SYS, the driver will
+initialize quietly (no output).
+
+
+Now save CONFIG.SYS, Shutdown and reboot your machine. When the driver
+loads during bootup you should see a message to that affect from the
+driver (unless you added the QUIET keyword). It will output the
+configuration for your card (IRQ and address) as well as saying
+whether or not you have a SB Pro or a regular SB. If you specified
+SBPRO or SBREG then the driver will check to see the card is present
+in the machine, whereas if you specified PAS16 then it will not. This
+is because I don't know how to enable the SB emulation on the PAS 16.
+See the file PAS16.DOC for more info on using SBOS2 with the PAS 16
+sound card.
+
+If everything proceded correctly you can now test that the driver is
+installed correctly. The file SAMPLE.RAW was included in this archive.
+Make sure your sound card is setup correctly and then type the following
+line in an OS/2 session
+
+COPY /B SAMPLE.RAW SBDSP$
+
+You should here the words 'testing testing'. If you dont then
+make sure that you installed the driver correctly. If you get any error
+messages write them down, they will be useful to me in helping you.
+
+If the above test working then you're ready to try out the rest of the
+package.
+
+
+WARNING TO DOS/WINOS2 USERS:
+----------------------------
+  Currently SBOS2 assumes it is the only program trying to directly
+access to SB hardware. I have not written a VDD to handle DOS/WINDOWS
+access to th SB, and the new Win 3.1 sound extensions have not been
+tested with SBOS2. I suspect this would result in a mess.
+
+  But all is not lost. Just follow some simple rules
+
+1) DO NOT RUN a OS/2 task that uses SBDSP$ simultaneously with a
+   DOS/WINDOWS task which directly accesses the Sound Blaster. The
+   problem with SBDSP$ is that it grabs the SB IRQ, and a DOS game
+   will be denied access to the interrupt, causing sounds to act strangely
+   for the game.  This means you cant listen to .MODs while beating up
+   the Kilrathi.
+
+2) It is ok to have a program like mixertool running while using a DOS
+   Sound Blaster program. This is because the device SBMIX$ does not
+   interfere with DOS programs that use the Sound Blaster. So you can
+   run a game and if the sound is too loud you can pop back to mixertool
+   and adjust the volume, then go back to the game and everything
+   should be ok.
+
+2) If you install another device driver for the SB (Multimedia extension,
+   WINOS2 3.1 drivers, etc), then DO NOT load SBOS2.SYS as well.
+
+  Just remember that only 1 task can use the DSP part of the SB at a
+time.  I dont think anything terrible can happen if you forget and run
+2 programs that use the DSP at a time, other than one of them will not
+sound right.
+
+
+THE SBOS2 PACKAGE
+-----------------
+
+There are several parts to the SBOS2 package.
+
+The following summarizes the programs which are available
+
+SBOS2UTL.ZIP - SB utilities, including programs to create and play back
+               VOC files, programs to control the built in mixer on
+               the SB PRO, as well as some simple programs to test that
+               the driver is functioning correctly.
+
+TRACKER.ZIP - A MOD player for OS/2. Two versions are included, 
+              single-threaded and double-threaded. The double-threaded
+              version performs better but has given some people
+              problems. The single threaded version may behave for
+              those people.
+
+The following files are available to aid development of programs using
+SBOS2:
+
+SBOS2DEV.ZIP - Development package for SBOS2. Includes source code for
+               the programs in SBOS2UTL.ZIP. Also includes programming
+               info.
+
+TRACKERS.ZIP - Source code for both MOD players in TRACKER.ZIP.
+
+SBOS2SRC.ZIP - source code for the SBOS2.SYS driver. Requires MSC 5.0 or later
+               and MASM 5.0 or later. Useful if you want to develop for
+               SBOS2.SYS, since you can see exactly what the driver does.
+
+
+OTHER NOTES
+-----------
+
+If you have any problems any of the SBOS2 packagee, send me email at
+msf@as.arizona.edu. Please try to make the subject line descriptive of
+the problem you are having. If the tracker program is not working, send
+me email with the subject line 'TRACKER PROBLEM', for example. Be
+sure to tell me the following in your message
+
+Exact version of OS/2 you are running (GA, Beta, etc)
+The type of SB card you have.
+The processor in your machine.
+Any error messages related to the problem.
+
+I am going to start a mailing list for SBOS2. If you are interested send me
+email with the subject line 'SBOS2 MAIL' and I'll add you to the list.
+If you are interested in developing for SBOS2 tell me in the message and
+I'll make a separate list for people who want to discuss programming topics.
+
+
